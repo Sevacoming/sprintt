@@ -2,39 +2,111 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
+	"sync"
+	"time"
 )
 
 const (
-	SIZE   = 100_000_000
-	CHUNKS = 8
+	SIZE           = 10_000_000 // размер слайса для бенчмарка
+	CHUNKS         = 8          // количество частей
+	maxRandomValue = 1_000_000  // верхняя граница случайных чисел
 )
 
-// generateRandomElements generates random elements.
+// generateRandomElements генерирует слайс из size положительных целых чисел.
+// При size <= 0 возвращает пустой слайс.
 func generateRandomElements(size int) []int {
-	// ваш код здесь
+	if size <= 0 {
+		return []int{}
+	}
+
+	result := make([]int, size)
+	for i := range result {
+		// Генерируем числа в диапазоне [1, maxRandomValue]
+		result[i] = rand.Intn(maxRandomValue) + 1
+	}
+
+	return result
 }
 
-// maximum returns the maximum number of elements.
-func maximum(data []int) int {
-	// ваш код здесь
+// maximum находит максимальный элемент в слайсе.
+// Для пустого или nil-слайса возвращает 0.
+func maximum(nums []int) int {
+	if len(nums) == 0 {
+		return 0
+	}
+
+	maxVal := nums[0]
+	for i := 1; i < len(nums); i++ {
+		if nums[i] > maxVal {
+			maxVal = nums[i]
+		}
+	}
+
+	return maxVal
 }
 
-// maxChunks returns the maximum number of elements in a chunks.
-func maxChunks(data []int) int {
-	// ваш код здесь
+// maxChunks делит слайс на CHUNKS частей, в каждой части находит максимум
+// в отдельной горутине, а затем возвращает максимум из максимумов.
+// Для пустого или nil-слайса возвращает 0.
+// Если длина меньше CHUNKS — просто использует maximum() целиком.
+func maxChunks(nums []int) int {
+	n := len(nums)
+	if n == 0 {
+		return 0
+	}
+
+	// Маленький слайс нет смысла резать на части
+	if n <= CHUNKS {
+		return maximum(nums)
+	}
+
+	chunkSize := n / CHUNKS
+	maxValues := make([]int, CHUNKS)
+
+	var wg sync.WaitGroup
+	wg.Add(CHUNKS)
+
+	for i := 0; i < CHUNKS; i++ {
+		// фиксируем значения индексов для замыкания
+		chunkIndex := i
+		start := chunkIndex * chunkSize
+		end := start + chunkSize
+
+		// Последний кусок забирает «хвост», если n не делится нацело
+		if chunkIndex == CHUNKS-1 {
+			end = n
+		}
+
+		go func(idx, from, to int) {
+			defer wg.Done()
+			maxValues[idx] = maximum(nums[from:to])
+		}(chunkIndex, start, end)
+	}
+
+	wg.Wait()
+
+	// Ищем максимум среди максимумов
+	return maximum(maxValues)
 }
 
 func main() {
-	fmt.Printf("Генерируем %d целых чисел", SIZE)
-	// ваш код здесь
+	rand.Seed(time.Now().UnixNano())
 
-	fmt.Println("Ищем максимальное значение в один поток")
-	// ваш код здесь
+	data := generateRandomElements(SIZE)
+	if len(data) == 0 {
+		fmt.Println("сгенерирован пустой слайс, нечего обрабатывать")
+		return
+	}
 
-	fmt.Printf("Максимальное значение элемента: %d\nВремя поиска: %d ms\n", max, elapsed)
+	start := time.Now()
+	maxSeq := maximum(data)
+	elapsedSeq := time.Since(start).Microseconds()
 
-	fmt.Printf("Ищем максимальное значение в %d потоков", CHUNKS)
-	// ваш код здесь
+	start = time.Now()
+	maxParallel := maxChunks(data)
+	elapsedParallel := time.Since(start).Microseconds()
 
-	fmt.Printf("Максимальное значение элемента: %d\nВремя поиска: %d ms\n", max, elapsed)
+	fmt.Printf("Последовательный максимум: %d, время: %d мкс\n", maxSeq, elapsedSeq)
+	fmt.Printf("Параллельный максимум (%d кусков): %d, время: %d мкс\n", CHUNKS, maxParallel, elapsedParallel)
 }
